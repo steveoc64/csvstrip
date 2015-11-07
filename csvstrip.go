@@ -16,12 +16,12 @@ var field int
 var linenumber int
 var charoffset int
 var DSN string
-var ignoredData string
+var ignoredData []byte
 
 func addTo(s []byte, b byte) []byte {
 	if field == ignoreFld {
 		//log.Println("Ignore", linenumber, charoffset, field, b)
-		ignoredData += string(b)
+		ignoredData = append(ignoredData, b)		
 		return s
 	}
 	return append(s, b)
@@ -86,7 +86,7 @@ func main() {
 	killed := 0
 	added := 0
 	outputbytes := make([]byte, 0, len(contents))
-	ignoredData = ""
+	ignoredData = make([]byte, 0, 10000)
 
 	// Apply the stripper algorithm to the input bytes
 	for index, b := range contents {
@@ -154,8 +154,8 @@ func main() {
 				if debug {
 					if DSN != "" && stmt != nil {
 						//res, err := stmt.Exec(fmt.Sprintf("instructions %d", linenumber), linenumber)
-						log.Println("\n\nSetting Instructions As:\n=============================\n\n",ignoredData,"\n=========================\n")
-						res, err := stmt.Exec(ignoredData, linenumber)
+						log.Println("\n\nSetting Instructions As:\n=============================\n\n",string(ignoredData),"\n=========================\n")
+						res, err := stmt.Exec(string(ignoredData), linenumber)
 						if err != nil {
 							log.Println("ERROR:", err.Error())
 						} else if debug {
@@ -182,7 +182,7 @@ func main() {
 			if debug {
 				log.Println("New line", linenumber)
 			}
-			ignoredData = ""
+			ignoredData = make([]byte, 0, 10000)
 			//log.Println("Previous 2 chars are ", contents[index-2], contents[index-1])
 			break
 		case ',':
