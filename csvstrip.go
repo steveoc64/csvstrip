@@ -16,10 +16,12 @@ var field int
 var linenumber int
 var charoffset int
 var DSN string
+var ignoredData string
 
 func addTo(s []byte, b byte) []byte {
 	if field == ignoreFld {
-		log.Println("Ignore", linenumber, charoffset, field, b)
+		//log.Println("Ignore", linenumber, charoffset, field, b)
+		ignoredData += string(b)
 		return s
 	}
 	return append(s, b)
@@ -52,7 +54,7 @@ func main() {
 
 	if DSN != "" {
 		if debug {
-			log.Println("Connecing to database", DSN)
+			log.Println("Connecting to database", DSN)
 		}
 		db, err := sql.Open("postgres", DSN)
 		defer db.Close()
@@ -84,7 +86,7 @@ func main() {
 	killed := 0
 	added := 0
 	outputbytes := make([]byte, 0, len(contents))
-	//var output []byte
+	ignoredData = ""
 
 	// Apply the stripper algorithm to the input bytes
 	for index, b := range contents {
@@ -151,7 +153,9 @@ func main() {
 				// Now we should update the database with the contents of the missing field
 				if debug {
 					if DSN != "" && stmt != nil {
-						res, err := stmt.Exec(fmt.Sprintf("instructions %d", linenumber), linenumber)
+						//res, err := stmt.Exec(fmt.Sprintf("instructions %d", linenumber), linenumber)
+						log.Println("\n\nSetting Instructions As:\n=============================\n\n",ignoredData,"\n=========================\n")
+						res, err := stmt.Exec(ignoredData, linenumber)
 						if err != nil {
 							log.Println("ERROR:", err.Error())
 						} else if debug {
@@ -178,6 +182,7 @@ func main() {
 			if debug {
 				log.Println("New line", linenumber)
 			}
+			ignoredData = ""
 			//log.Println("Previous 2 chars are ", contents[index-2], contents[index-1])
 			break
 		case ',':
