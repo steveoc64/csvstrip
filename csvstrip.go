@@ -17,11 +17,24 @@ var linenumber int
 var charoffset int
 var DSN string
 var ignoredData []byte
+var isHTML bool
+var lastWasBackslash bool
 
 func addTo(s []byte, b byte) []byte {
 	if field == ignoreFld {
 		//log.Println("Ignore", linenumber, charoffset, field, b)
-		ignoredData = append(ignoredData, b)		
+		switch b {
+		case 'n', 'r':
+			if !lastWasBackslash {
+				ignoredData = append(ignoredData, b)
+			}
+			lastWasBackslash = false
+		case '\\':
+			lastWasBackslash = true
+		default:
+			ignoredData = append(ignoredData, b)
+			lastWasBackslash = false
+		}
 		return s
 	}
 	return append(s, b)
@@ -31,11 +44,13 @@ func main() {
 
 	// Load runtime flags
 	var debugPtr = flag.Bool("debug", false, "Show debug messages")
+	var htmlPtr = flag.Bool("html", false, "Quoted strings contain HTML")
 	var ignoreFieldPtr = flag.Int("ignore", -1, "Ignore Field")
 	flag.StringVar(&DSN, "dsn", "", "Data Source Name")
 
 	flag.Parse()
 	debug = *debugPtr
+	isHTML = *htmlPtr
 	ignoreFld = *ignoreFieldPtr
 
 	log.Println("Non flag args", flag.Args())
@@ -133,12 +148,19 @@ func main() {
 			break
 		case '\r':
 			if inquotes {
-				if debug {
-					log.Println("CR in quotes on line, so add Escape char", linenumber, charoffset, field)
+				if isHTML {
+					if debug {
+						log.Println("CR in quotes on line in HTML mode, so remove them", linenumber, charoffset, field)
+					}
+					killed++
+				} else {
+					if debug {
+						log.Println("CR in quotes on line, so add Escape char", linenumber, charoffset, field)
+					}
+					outputbytes = addTo(outputbytes, '\\')
+					outputbytes = addTo(outputbytes, 'r')
+					added++
 				}
-				outputbytes = addTo(outputbytes, '\\')
-				outputbytes = addTo(outputbytes, 'r')
-				added++
 			} else {
 				if field == ignoreFld {
 					// Special hack here, add an extra column to the data with the line number of the line being processed
@@ -154,7 +176,7 @@ func main() {
 				if debug {
 					if DSN != "" && stmt != nil {
 						//res, err := stmt.Exec(fmt.Sprintf("instructions %d", linenumber), linenumber)
-						log.Println("\n\nSetting Instructions As:\n=============================\n\n",string(ignoredData),"\n=========================\n")
+						log.Println("\n\nSetting Instructions As:\n=============================\n\n", string(ignoredData), "\n=========================\n")
 						res, err := stmt.Exec(string(ignoredData), linenumber)
 						if err != nil {
 							log.Println("ERROR:", err.Error())
@@ -167,12 +189,19 @@ func main() {
 			break
 		case '\n':
 			if inquotes {
-				if debug {
-					log.Println("LF in quotes on line, so add Escape char", linenumber, charoffset, field)
+				if isHTML {
+					if debug {
+						log.Println("LF in quotes on line in HTML mode so remove them", linenumber, charoffset, field)
+					}
+					killed++
+				} else {
+					if debug {
+						log.Println("LF in quotes on line, so add Escape char", linenumber, charoffset, field)
+					}
+					outputbytes = addTo(outputbytes, '\\')
+					outputbytes = addTo(outputbytes, 'n')
+					added++
 				}
-				outputbytes = addTo(outputbytes, '\\')
-				outputbytes = addTo(outputbytes, 'n')
-				added++
 			} else {
 				outputbytes = append(outputbytes, b)
 			}
@@ -207,13 +236,17 @@ func main() {
 			}
 			break
 		case '\\':
-			if debug {
-				log.Println("Escaping out a BackSlash", linenumber, charoffset, field)
+			if isHTML {
+				log.Println("Remove embedded backslash from output", linenumber, charoffset, field)
+				killed++
+			} else {
+				if debug {
+					log.Println("Escaping out a BackSlash", linenumber, charoffset, field)
+				}
+				outputbytes = addTo(outputbytes, '\\')
+				outputbytes = addTo(outputbytes, 'b')
+				added++
 			}
-			outputbytes = addTo(outputbytes, '\\')
-			outputbytes = addTo(outputbytes, 'b')
-			added++
-			break
 		case '\v':
 			if debug {
 				log.Println("Escaping out a Vertical Tab", linenumber, charoffset, field)
@@ -221,7 +254,6 @@ func main() {
 			outputbytes = addTo(outputbytes, '\\')
 			outputbytes = addTo(outputbytes, 'v')
 			added++
-			break
 		case '\t':
 			if debug {
 				log.Println("Escaping out a Tab", linenumber, charoffset, field)
@@ -229,7 +261,6 @@ func main() {
 			outputbytes = addTo(outputbytes, '\\')
 			outputbytes = addTo(outputbytes, 't')
 			added++
-			break
 		case '\f':
 			if debug {
 				log.Println("Escaping out a FormFeed", linenumber, charoffset, field)
@@ -237,10 +268,8 @@ func main() {
 			outputbytes = addTo(outputbytes, '\\')
 			outputbytes = addTo(outputbytes, 'f')
 			added++
-			break
 		default:
 			outputbytes = addTo(outputbytes, b)
-			break
 		}
 	}
 
